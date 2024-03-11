@@ -1,0 +1,21 @@
+{
+  "name": "db",
+  "version": "1.0.0",
+  "description": "Tool to setup and update databases for bus-lader",
+  "scripts": {
+    "start": "node index.mjs",
+    "dev": "dotenv -e .env.development.local -- node index.mjs"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^7.4.1",
+    "prisma": "^5.10.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.10.2",
+    "csv-parse": "^5.5.5",
+    "date-fns": "^3.3.1",
+    "decompress": "^4.2.1",
+    "fs-extra": "^11.2.0",
+    "unzipper": "^0.10.14"
+  }
+}
