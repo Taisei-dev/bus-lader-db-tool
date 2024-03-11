@@ -19,7 +19,7 @@ async function getGTFSData(companyId) {
   res = arrayBuffer = buffer = null;
 }
 
-async function deleteOld(companyId){
+async function deleteOld(companyId) {
   //delete old
   await prisma.stopTime.deleteMany({
     where: {
@@ -31,16 +31,38 @@ async function deleteOld(companyId){
       company_id: companyId,
     },
   });
-  await prisma.shapePoints.deleteMany({
+  await prisma.shapePoint?.deleteMany({
     where: {
       company_id: companyId,
     },
   });
-  await prisma.shape.deleteMany({
+  await prisma.shape?.deleteMany({
     where: {
       company_id: companyId,
     },
   });
+  await prisma.route.deleteMany({
+    where: {
+      company_id: companyId,
+    },
+  });
+}
+
+async function updateRoutes(companyId) {
+  //update routes
+  let routeData = parseCsv(fs.readFileSync('tmp/dist/routes.txt'), {
+    columns: true,
+    bom: true,
+  }).map((route) => {
+    return {
+      route_id: route['route_id'],
+      company_id: companyId,
+      short_name: route['route_short_name'],
+      long_name: route['route_long_name'],
+    };
+  });
+  await prisma.route.createMany({ data: routeData });
+  routeData = null;
 }
 
 async function updateShapeAndShapePoints(companyId) {
@@ -68,7 +90,7 @@ async function updateShapeAndShapePoints(companyId) {
     };
   });
   shapePointCSV = shapeIdData = null;
-  await prisma.shapePoints.createMany({
+  await prisma.shapePoint.createMany({
     data: shapePointData,
   });
   shapePointData = null;
@@ -80,14 +102,18 @@ async function updateTrips(companyId) {
     columns: true,
     bom: true,
   }).map((trip) => {
-    return trip['shape_id']?{
-      trip_id: trip['trip_id'],
-      company_id: companyId,
-      shape_id: trip['shape_id'],
-    }:{
-      trip_id: trip['trip_id'],
-      company_id: companyId,
-    };
+    return trip['shape_id']
+      ? {
+          trip_id: trip['trip_id'],
+          company_id: companyId,
+          route_id: trip['route_id'],
+          shape_id: trip['shape_id'],
+        }
+      : {
+          trip_id: trip['trip_id'],
+          company_id: companyId,
+          route_id: trip['route_id'],
+        };
   });
   await prisma.trip.createMany({ data: tripData });
   tripData = null;
@@ -102,6 +128,7 @@ async function updateTripsWithoutShape(companyId) {
     return {
       trip_id: trip['trip_id'],
       company_id: companyId,
+      route_id: trip['route_id'],
     };
   });
   await prisma.trip.createMany({ data: tripData });
@@ -172,39 +199,86 @@ async function updateFeedInfo(companyId) {
   });
 }
 
-for (let companyId in constants) {
-  //check if udpate needed
-  const feed = feeds.find((feed) => feed.company_id == companyId);
-  if (feed && feed.feed_end_date > Date.now()) {
-    console.log(
-      `Up to date : id ${companyId} ${constants[companyId].name}.`
-    );
-    continue;
+export async function check() {
+  let upToDate = [],
+    updateNeeded = [];
+  for (let companyId in constants) {
+    //check if udpate needed
+    const feed = feeds.find((feed) => feed.company_id == companyId);
+    if (!feed) {
+      updateNeeded.push([companyId, 'No data on database']);
+    } else if (feed.feed_end_date < Date.now()) {
+      updateNeeded.push([
+        companyId,
+        `Expired on ${feed.feed_end_date.toLocaleDateString()}`,
+      ]);
+    } else {
+      upToDate.push(companyId);
+    }
   }
+  console.log('Up to date :');
+  for (let companyId of upToDate) {
+    console.log(`  ID ${companyId}  ${constants[companyId].name}`);
+  }
+  console.log('Update needed :');
+  for (let [companyId, reason] of updateNeeded) {
+    console.log(`  ID ${companyId}  ${constants[companyId].name}    ${reason}`);
+  }
+}
 
+export async function updateOne(companyId) {
   //update
-  console.log(
-    `Working on : id ${companyId} ${constants[companyId].name}...`
-  );
-  try{
+  console.log(`Working on : id ${companyId} ${constants[companyId].name}...`);
+  try {
     await getGTFSData(companyId);
     await deleteOld(companyId);
+    await updateRoutes(companyId);
     //shape.txt is optional
-    if(fs.existsSync('tmp/dist/shapes.txt')){
+    if (fs.existsSync('tmp/dist/shapes.txt')) {
       await updateShapeAndShapePoints(companyId);
       await updateTrips(companyId);
-    }
-    else{
-      await updateTripsWithoutShape(companyId);    
+    } else {
+      await updateTripsWithoutShape(companyId);
     }
     await updateStopTimes(companyId);
     await updateFeedInfo(companyId);
-    console.log('done.')
-  }catch(e){
-    console.log('Error!\n',e);
-  }
-  finally{
+    console.log('done.');
+  } catch (e) {
+    console.log('Error!\n', e);
+  } finally {
     fs.removeSync('tmp');
   }
 }
 
+export async function updateAll() {
+  for (let companyId in constants) {
+    //check if udpate needed
+    const feed = feeds.find((feed) => feed.company_id == companyId);
+    if (feed && feed.feed_end_date > Date.now()) {
+      console.log(`Up to date : id ${companyId} ${constants[companyId].name}.`);
+      continue;
+    }
+
+    //update
+    console.log(`Working on : id ${companyId} ${constants[companyId].name}...`);
+    try {
+      await getGTFSData(companyId);
+      await deleteOld(companyId);
+      await updateRoutes(companyId);
+      //shape.txt is optional
+      if (fs.existsSync('tmp/dist/shapes.txt')) {
+        await updateShapeAndShapePoints(companyId);
+        await updateTrips(companyId);
+      } else {
+        await updateTripsWithoutShape(companyId);
+      }
+      await updateStopTimes(companyId);
+      await updateFeedInfo(companyId);
+      console.log('done.');
+    } catch (e) {
+      console.log('Error!\n', e);
+    } finally {
+      fs.removeSync('tmp');
+    }
+  }
+}
