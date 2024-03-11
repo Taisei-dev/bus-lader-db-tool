@@ -14,7 +14,7 @@ model Route {
   long_name  String
   trips      Trip[] @relation("routes")
 
-  @@id([route_id, company_id])
+  @@id(name: "compound_route_id", [route_id, company_id])
   @@map("routes")
 }
 
@@ -49,7 +49,7 @@ model Trip {
   shape      Shape?     @relation("trips", fields: [shape_id, company_id], references: [shape_id, company_id])
   shape_id   String?
 
-  @@id([trip_id, company_id])
+  @@id(name: "compound_trip_id", [trip_id, company_id])
   @@map("trips")
 }
 
